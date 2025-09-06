@@ -15,8 +15,8 @@ namespace MongoScriptExecutor
             //}
 
             //var folderPath = args[0];
-            var folderPath = $"E:/SELISE/DB/Backup-loyalty/28082025/backup/backup/907d5798-07a3-45d2-987e-17607096daaa";
-
+            //var folderPath = $"E:/SELISE/DB/Backup-loyalty/28082025/backup/backup/907d5798-07a3-45d2-987e-17607096daaa";
+            var folderPath = $"E:/MT/DB/Mongo/RequiredForNewDatabase";
             if (!Directory.Exists(folderPath))
             {
                 Console.WriteLine($"Directory not found: {folderPath}");
@@ -25,8 +25,50 @@ namespace MongoScriptExecutor
 
             // MongoDB connection string
             var connectionString = "mongodb://localhost:27017"; // Update as needed
-            var client = new MongoClient(connectionString);
-            var database = client.GetDatabase("importdatabase"); // Replace with your database name
+            //import collections
+            IMongoDatabase database = GetMongoDatabaseConnection(connectionString, "28d7f20c-11e6-44f0-a3ae-3178d431534f");
+            await ImportAllCollectionFromLocation(folderPath, database);
+
+            // import collction from one database to another database
+            //IMongoDatabase sourceDatabase = GetMongoDatabaseConnection(connectionString, "907d5798-07a3-45d2-987e-17607096daaa");
+            //IMongoDatabase targetDatabase = GetMongoDatabaseConnection(connectionString, "28d7f20c-11e6-44f0-a3ae-3178d431534f");
+            //await ImportFromOneDatabaseToAnotherDatabase(sourceDatabase, targetDatabase);
+
+            // delete all data from collections
+            //IMongoDatabase database = GetMongoDatabaseConnection(connectionString, "28d7f20c-11e6-44f0-a3ae-3178d431534f");
+            //var collections = await database.ListCollectionNamesAsync();
+            //List<string> existingCollections = collections.ToList();
+            //await DeleteAllDataFromCollections(database, existingCollections);
+                        
+        }
+
+        private static async Task DeleteAllDataFromCollections(IMongoDatabase database, List<string> collectionNames)
+        {
+            if (collectionNames.Any() == false) return;
+            foreach (var collectionName in collectionNames)
+            {
+                var collection = database.GetCollection<BsonDocument>(collectionName);
+                await collection.DeleteManyAsync(new BsonDocument()); // Deletes all documents in the collection
+            }
+        }
+
+        private static async Task ImportFromOneDatabaseToAnotherDatabase(IMongoDatabase sourceDatabase, IMongoDatabase targetDatabase)
+        {
+            var collections = await sourceDatabase.ListCollectionNamesAsync();
+            while (await collections.MoveNextAsync())
+            {
+                foreach (var collectionName in collections.Current)
+                {
+                    var sourceCollection = sourceDatabase.GetCollection<BsonDocument>(collectionName);
+                    var documents = await sourceCollection.Find(new BsonDocument()).ToListAsync();
+                    var targetCollection = targetDatabase.GetCollection<BsonDocument>(collectionName);
+                    await targetCollection.InsertManyAsync(documents);
+                }
+            }
+        }
+
+        private static async Task ImportAllCollectionFromLocation(string folderPath, IMongoDatabase database)
+        {
             //var collection = database.GetCollection<BsonDocument>("YourCollectionName"); // Replace with your collection name
 
             // Get all JSON files in the specified folder
@@ -67,13 +109,20 @@ namespace MongoScriptExecutor
                     if (list.Count > 0)
                     {
                         await collection.InsertManyAsync(list);
-                    }                    
+                    }
                 }
                 else
                 {
                     Console.WriteLine($"File not found: {jsonFile}");
                 }
             }
+        }
+
+        private static IMongoDatabase GetMongoDatabaseConnection(string connectionString, string databaseName)
+        {
+            var client = new MongoClient(connectionString);
+            var database = client.GetDatabase(databaseName);
+            return database;
         }
     }
 }
